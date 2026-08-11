@@ -13,7 +13,8 @@ const productSchema = new mongoose.Schema(
     stock: { type: Number, required: true, min: 0, default: 0 },
     unit: { type: String, default: 'kg' }, // kg, L, unit, etc.
     minWholesaleQty: { type: Number, default: 1, min: 1 },
-    isActive: { type: Boolean, default: true },
+    weightKg:        { type: Number, default: 1, min: 0 }, // used for delivery charge calc
+    isActive:        { type: Boolean, default: true },
   },
   { timestamps: true }
 );

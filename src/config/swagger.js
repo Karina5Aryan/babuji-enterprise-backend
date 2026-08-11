@@ -19,12 +19,16 @@ const definition = {
     { url: `http://localhost:${PORT}`, description: 'Local development' },
   ],
   tags: [
-    { name: 'Auth', description: 'Registration, login and current user' },
-    { name: 'Products', description: 'Product catalogue (public reads, admin writes)' },
-    { name: 'Orders', description: 'Customer orders' },
-    { name: 'Users', description: 'Own profile and saved addresses' },
-    { name: 'Admin', description: 'Admin-only dashboard and management' },
-    { name: 'Health', description: 'Service health checks' },
+    { name: 'Auth',      description: 'Registration, login and current user' },
+    { name: 'Products',  description: 'Product catalogue (public reads, admin writes)' },
+    { name: 'Orders',    description: 'Customer orders' },
+    { name: 'Payments',  description: 'Razorpay payment flow and webhook' },
+    { name: 'Shipments', description: 'Shipment creation and tracking' },
+    { name: 'Couriers',  description: 'Courier partner management' },
+    { name: 'Invoices',  description: 'Invoice generation and PDF download' },
+    { name: 'Users',     description: 'Own profile and saved addresses' },
+    { name: 'Admin',     description: 'Admin-only dashboard and management' },
+    { name: 'Health',    description: 'Service health checks' },
   ],
   components: {
     securitySchemes: {
@@ -199,6 +203,97 @@ const definition = {
           orders: { type: 'number', example: 4 },
           totalSpent: { type: 'number', example: 9500 },
           createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      // ── Courier Partner ──────────────────────────────────────────────────────
+      Courier: {
+        type: 'object',
+        properties: {
+          id:              { type: 'string', example: '66a1f2c3e4b0a1234567890f' },
+          name:            { type: 'string', example: 'BlueDart' },
+          contactPerson:   { type: 'string', example: 'Ramesh Shah' },
+          phone:           { type: 'string', example: '1800123456' },
+          email:           { type: 'string', format: 'email', example: 'support@bluedart.com' },
+          baseCharge:      { type: 'number', example: 40, description: '₹ base delivery charge' },
+          perKgCharge:     { type: 'number', example: 10, description: '₹ per kg above freeWeightKg' },
+          freeWeightKg:    { type: 'number', example: 5, description: 'First N kg covered by baseCharge' },
+          servicePincodes: { type: 'array', items: { type: 'string' }, example: ['395003', '395004'], description: 'Pincodes served (empty = all)' },
+          isActive:        { type: 'boolean', example: true },
+          notes:           { type: 'string', example: 'Preferred for bulk shipments' },
+          createdAt:       { type: 'string', format: 'date-time' },
+          updatedAt:       { type: 'string', format: 'date-time' },
+        },
+      },
+      CourierInput: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name:            { type: 'string', example: 'BlueDart' },
+          contactPerson:   { type: 'string', example: 'Ramesh Shah' },
+          phone:           { type: 'string', example: '1800123456' },
+          email:           { type: 'string', format: 'email', example: 'support@bluedart.com' },
+          baseCharge:      { type: 'number', example: 40, description: '₹ base delivery charge' },
+          perKgCharge:     { type: 'number', example: 10, description: '₹ per kg above freeWeightKg' },
+          freeWeightKg:    { type: 'number', example: 5, description: 'First N kg covered by baseCharge' },
+          servicePincodes: { type: 'array', items: { type: 'string' }, example: ['395003', '395004'], description: 'Pincodes served (empty = all)' },
+          isActive:        { type: 'boolean', example: true },
+          notes:           { type: 'string', example: 'Preferred for bulk shipments' },
+        },
+      },
+      // ── Shipment ─────────────────────────────────────────────────────────────
+      TrackingEvent: {
+        type: 'object',
+        properties: {
+          status:      { type: 'string', enum: ['label_created','picked_up','in_transit','out_for_delivery','delivered','failed_delivery','returned'], example: 'in_transit' },
+          location:    { type: 'string', example: 'Ahmedabad Hub' },
+          description: { type: 'string', example: 'Package arrived at hub' },
+          timestamp:   { type: 'string', format: 'date-time' },
+          updatedBy:   { type: 'string', description: 'Admin user id who added this event' },
+        },
+      },
+      Shipment: {
+        type: 'object',
+        properties: {
+          id:                { type: 'string', example: '66a1f2c3e4b0a1234567890d' },
+          order:             { type: 'string', description: 'Populated Order object or id', example: '66a1f2c3e4b0a1234567890c' },
+          courierPartner:    { $ref: '#/components/schemas/Courier' },
+          awbNumber:         { type: 'string', example: 'DL123456789IN' },
+          status:            { type: 'string', enum: ['label_created','picked_up','in_transit','out_for_delivery','delivered','failed_delivery','returned'], example: 'in_transit' },
+          estimatedDelivery: { type: 'string', format: 'date-time' },
+          trackingEvents:    { type: 'array', items: { $ref: '#/components/schemas/TrackingEvent' } },
+          deliveredAt:       { type: 'string', format: 'date-time' },
+          notes:             { type: 'string', example: 'Handle with care' },
+          createdAt:         { type: 'string', format: 'date-time' },
+          updatedAt:         { type: 'string', format: 'date-time' },
+        },
+      },
+      ShipmentInput: {
+        type: 'object',
+        required: ['orderId', 'courierId'],
+        properties: {
+          orderId:           { type: 'string', example: '66a1f2c3e4b0a1234567890c', description: 'Mongo id of a confirmed order' },
+          courierId:         { type: 'string', example: '66a1f2c3e4b0a1234567890f', description: 'Mongo id of a courier partner' },
+          awbNumber:         { type: 'string', example: 'DL123456789IN' },
+          estimatedDelivery: { type: 'string', format: 'date-time', example: '2026-08-14T00:00:00.000Z' },
+          notes:             { type: 'string', example: 'Handle with care' },
+        },
+      },
+      // ── Invoice ──────────────────────────────────────────────────────────────
+      Invoice: {
+        type: 'object',
+        properties: {
+          id:             { type: 'string', example: '66a1f2c3e4b0a1234567890e' },
+          invoiceNumber:  { type: 'string', example: 'INV-1001' },
+          order:          { type: 'string', description: 'Populated Order summary or id' },
+          user:           { type: 'string', description: 'Populated User summary or id' },
+          type:           { type: 'string', enum: ['sale', 'credit_note'], example: 'sale' },
+          items:          { type: 'array', items: { $ref: '#/components/schemas/OrderItem' } },
+          subtotal:       { type: 'number', example: 2375 },
+          shippingCharge: { type: 'number', example: 0 },
+          total:          { type: 'number', example: 2375 },
+          issuedAt:       { type: 'string', format: 'date-time' },
+          createdAt:      { type: 'string', format: 'date-time' },
+          updatedAt:      { type: 'string', format: 'date-time' },
         },
       },
       Dashboard: {
@@ -636,6 +731,413 @@ const definition = {
           200: { description: 'Customers', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Customer' } } } } },
           401: { $ref: '#/components/responses/Unauthorized' },
           403: { $ref: '#/components/responses/Forbidden' },
+        },
+      },
+    },
+
+    // ── Payments ──────────────────────────────────────────────────────────────
+    '/api/payments/create-razorpay-order': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Step 1 — Create Razorpay order to open checkout popup',
+        description: 'Call this after placing an order (POST /api/orders). Returns the Razorpay order details needed to open the checkout JS popup on the frontend.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['orderId'],
+                properties: {
+                  orderId: { type: 'string', example: 'ORD-1001', description: 'Order number or Mongo id of a pending order' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Razorpay order created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    razorpayOrderId: { type: 'string', example: 'order_Abc123XYZ' },
+                    amount:          { type: 'number', example: 237500, description: 'Amount in paise' },
+                    currency:        { type: 'string', example: 'INR' },
+                    keyId:           { type: 'string', example: 'rzp_test_XXXXXXXX' },
+                    orderNumber:     { type: 'string', example: 'ORD-1001' },
+                    name:            { type: 'string', example: 'Babuji Enterprise' },
+                    description:     { type: 'string', example: 'Payment for order ORD-1001' },
+                  },
+                },
+              },
+            },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/payments/verify': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Step 2 — Verify Razorpay payment signature',
+        description: 'After the Razorpay checkout popup succeeds, send the three Razorpay ids returned by the popup to this endpoint. On success the order is marked **confirmed**.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature', 'orderId'],
+                properties: {
+                  razorpay_order_id:  { type: 'string', example: 'order_Abc123XYZ' },
+                  razorpay_payment_id:{ type: 'string', example: 'pay_Def456UVW' },
+                  razorpay_signature: { type: 'string', example: 'a1b2c3d4e5f6...' },
+                  orderId:            { type: 'string', example: 'ORD-1001' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Payment verified — order confirmed',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success:     { type: 'boolean', example: true },
+                    message:     { type: 'string', example: 'Payment verified successfully. Order is confirmed.' },
+                    orderNumber: { type: 'string', example: 'ORD-1001' },
+                    status:      { type: 'string', example: 'confirmed' },
+                  },
+                },
+              },
+            },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/payments/webhook': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Razorpay webhook receiver (public — called by Razorpay servers)',
+        description: 'Razorpay calls this URL for events such as `payment.captured`, `payment.failed`, `refund.created`, and `refund.processed`. Do **not** call this endpoint from the frontend; it is for Razorpay server-to-server calls only. Signature is verified using `x-razorpay-signature` header.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description: 'Standard Razorpay webhook payload',
+                properties: {
+                  event:   { type: 'string', example: 'payment.captured' },
+                  payload: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+        parameters: [
+          { name: 'x-razorpay-signature', in: 'header', required: false, schema: { type: 'string' }, description: 'HMAC-SHA256 signature from Razorpay' },
+        ],
+        responses: {
+          200: {
+            description: 'Acknowledged',
+            content: { 'application/json': { schema: { type: 'object', properties: { received: { type: 'boolean', example: true } } } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+        },
+      },
+    },
+
+    // ── Couriers ──────────────────────────────────────────────────────────────
+    '/api/couriers': {
+      get: {
+        tags: ['Couriers'],
+        summary: 'List courier partners',
+        description: 'Admins see all (including inactive). Authenticated customers see only active couriers.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'List of couriers', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Courier' } } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+      post: {
+        tags: ['Couriers'],
+        summary: 'Create courier partner (admin)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/CourierInput' } } },
+        },
+        responses: {
+          201: { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Courier' } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+        },
+      },
+    },
+    '/api/couriers/{id}': {
+      get: {
+        tags: ['Couriers'],
+        summary: 'Get courier partner by id',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Courier', content: { 'application/json': { schema: { $ref: '#/components/schemas/Courier' } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+      put: {
+        tags: ['Couriers'],
+        summary: 'Update courier partner (admin)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/CourierInput' } } } },
+        responses: {
+          200: { description: 'Updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Courier' } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+      delete: {
+        tags: ['Couriers'],
+        summary: 'Deactivate courier partner (admin — soft delete)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Deactivated', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string', example: 'Courier partner deactivated successfully' }, courier: { $ref: '#/components/schemas/Courier' } } } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    // ── Shipments ─────────────────────────────────────────────────────────────
+    '/api/shipments/awb/{awbNumber}': {
+      get: {
+        tags: ['Shipments'],
+        summary: 'Track shipment by AWB number (public)',
+        description: 'Anyone can track a shipment using the Air Waybill number. Returns limited public info only (no order details).',
+        parameters: [{ name: 'awbNumber', in: 'path', required: true, schema: { type: 'string' }, example: 'DL123456789IN' }],
+        responses: {
+          200: {
+            description: 'Shipment tracking info',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    awbNumber:         { type: 'string', example: 'DL123456789IN' },
+                    status:            { type: 'string', example: 'in_transit' },
+                    courierPartner:    { $ref: '#/components/schemas/Courier' },
+                    estimatedDelivery: { type: 'string', format: 'date-time' },
+                    deliveredAt:       { type: 'string', format: 'date-time' },
+                    trackingEvents:    { type: 'array', items: { $ref: '#/components/schemas/TrackingEvent' } },
+                  },
+                },
+              },
+            },
+          },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/shipments/track/{orderId}': {
+      get: {
+        tags: ['Shipments'],
+        summary: 'Track own order shipment (customer)',
+        description: 'Authenticated customer can track the shipment for one of their own orders.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'string' }, example: '66a1f2c3e4b0a1234567890c' }],
+        responses: {
+          200: { description: 'Shipment', content: { 'application/json': { schema: { $ref: '#/components/schemas/Shipment' } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/shipments': {
+      get: {
+        tags: ['Shipments'],
+        summary: 'List all shipments (admin)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['label_created','picked_up','in_transit','out_for_delivery','delivered','failed_delivery','returned'] }, description: 'Filter by shipment status' },
+        ],
+        responses: {
+          200: { description: 'Shipments', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Shipment' } } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+        },
+      },
+      post: {
+        tags: ['Shipments'],
+        summary: 'Create shipment for a confirmed order (admin)',
+        description: 'Creates a shipment, sets the first tracking event (`label_created`), and moves the linked order to `shipped`.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/ShipmentInput' } } },
+        },
+        responses: {
+          201: { description: 'Shipment created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Shipment' } } } },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/shipments/{id}': {
+      get: {
+        tags: ['Shipments'],
+        summary: 'Get shipment by id (admin)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Shipment', content: { 'application/json': { schema: { $ref: '#/components/schemas/Shipment' } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/shipments/{id}/track': {
+      post: {
+        tags: ['Shipments'],
+        summary: 'Add tracking event to shipment (admin)',
+        description: 'Appends a new tracking event and updates the shipment status. If status is `delivered`, the linked order is automatically marked delivered too.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['status'],
+                properties: {
+                  status:      { type: 'string', enum: ['label_created','picked_up','in_transit','out_for_delivery','delivered','failed_delivery','returned'], example: 'in_transit' },
+                  location:    { type: 'string', example: 'Ahmedabad Hub' },
+                  description: { type: 'string', example: 'Package arrived at hub' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Updated shipment', content: { 'application/json': { schema: { $ref: '#/components/schemas/Shipment' } } } },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    // ── Invoices ──────────────────────────────────────────────────────────────
+    '/api/invoices/my': {
+      get: {
+        tags: ['Invoices'],
+        summary: "List current customer's invoices",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Invoices', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Invoice' } } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/api/invoices': {
+      get: {
+        tags: ['Invoices'],
+        summary: 'List all invoices (admin)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['sale', 'credit_note'] }, description: 'Filter by invoice type' },
+          { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search by invoice number' },
+        ],
+        responses: {
+          200: { description: 'Invoices', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Invoice' } } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+        },
+      },
+      post: {
+        tags: ['Invoices'],
+        summary: 'Create invoice for an order (admin)',
+        description: 'Idempotent — returns the existing invoice if one of the same type already exists for the order. Optionally emails the PDF to the customer.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['orderId'],
+                properties: {
+                  orderId:             { type: 'string', example: '66a1f2c3e4b0a1234567890c' },
+                  type:                { type: 'string', enum: ['sale', 'credit_note'], default: 'sale' },
+                  sendEmailToCustomer: { type: 'boolean', default: false, description: 'If true, emails the PDF to the customer' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Invoice' } } } },
+          200: { description: 'Existing invoice returned (idempotent)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Invoice' } } } },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/invoices/{id}': {
+      get: {
+        tags: ['Invoices'],
+        summary: 'Get invoice by id (customer — own, or admin)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Invoice', content: { 'application/json': { schema: { $ref: '#/components/schemas/Invoice' } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/invoices/{id}/download': {
+      get: {
+        tags: ['Invoices'],
+        summary: 'Download invoice as PDF (customer — own, or admin)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: {
+            description: 'PDF file',
+            content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
+          },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
         },
       },
     },

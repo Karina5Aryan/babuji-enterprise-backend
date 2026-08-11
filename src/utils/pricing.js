@@ -8,14 +8,42 @@ function resolveUnitPrice(product, quantity, buyMode) {
   return wholesaleEligible ? product.wholesalePrice : product.price;
 }
 
-// Slab-based shipping. Free over the configured threshold.
-function calculateShipping(subtotal) {
+// ─────────────────────────────────────────────────────────────────────────
+// calculateShipping
+//   subtotal      — order subtotal in ₹
+//   totalWeightKg — total weight of all items in kg (pass 0 if unknown)
+//   courier       — CourierPartner document or null
+//
+// When a courier partner is provided, their specific charge rules are used.
+// Otherwise falls back to the slab-based default.
+// ─────────────────────────────────────────────────────────────────────────
+function calculateShipping(subtotal, totalWeightKg = 0, courier = null) {
   const freeThreshold = Number(process.env.FREE_SHIPPING_THRESHOLD || 5000);
-  const base = Number(process.env.DEFAULT_SHIPPING_CHARGE || 60);
 
+  // Free shipping on large orders regardless of courier
   if (subtotal >= freeThreshold) return 0;
+
+  if (courier) {
+    const baseCharge   = courier.baseCharge   ?? Number(process.env.COURIER_BASE_CHARGE   || 40);
+    const perKgCharge  = courier.perKgCharge  ?? Number(process.env.COURIER_PER_KG_CHARGE || 10);
+    const freeWeightKg = courier.freeWeightKg ?? Number(process.env.MAX_FREE_WEIGHT_KG    || 5);
+
+    const extraKg = Math.max(0, totalWeightKg - freeWeightKg);
+    return Math.round(baseCharge + extraKg * perKgCharge);
+  }
+
+  // Default slab-based logic (no courier selected)
+  const base = Number(process.env.DEFAULT_SHIPPING_CHARGE || 60);
   if (subtotal >= 2000) return 100;
   return base;
 }
 
-module.exports = { resolveUnitPrice, calculateShipping };
+// Sum total weight from an array of order items.
+// Each item must have: { weightKg, quantity }
+function calculateTotalWeight(orderItems) {
+  return orderItems.reduce((sum, item) => {
+    return sum + (item.weightKg || 1) * item.quantity;
+  }, 0);
+}
+
+module.exports = { resolveUnitPrice, calculateShipping, calculateTotalWeight };
