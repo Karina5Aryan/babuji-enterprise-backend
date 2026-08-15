@@ -17,6 +17,7 @@ const paymentRoutes  = require('./src/routes/paymentRoutes');
 const courierRoutes  = require('./src/routes/courierRoutes');
 const shipmentRoutes = require('./src/routes/shipmentRoutes');
 const invoiceRoutes  = require('./src/routes/invoiceRoutes');
+const cartRoutes     = require('./src/routes/cartRoutes');
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use('/api/payments',  paymentRoutes);
 app.use('/api/couriers',  courierRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/invoices',  invoiceRoutes);
+app.use('/api/cart',      cartRoutes);
 
 // Error handling
 app.use(notFound);

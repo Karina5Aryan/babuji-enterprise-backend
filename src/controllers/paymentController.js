@@ -2,7 +2,10 @@ const asyncHandler = require('express-async-handler');
 const crypto = require('crypto');
 const razorpay = require('../config/razorpay');
 const Order = require('../models/Order');
+const Invoice = require('../models/Invoice');
 const { findOrder } = require('./orderController');
+// Lazy-load to avoid circular dep at module boot
+const getNextInvoiceNumber = () => require('./invoiceController').nextInvoiceNumber;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 1 — Customer places order first (POST /api/orders), then calls this
@@ -109,6 +112,30 @@ const verifyPayment = asyncHandler(async (req, res) => {
   order.status                    = 'confirmed';
   await order.save();
 
+  // ── Auto-create sale invoice ──────────────────────────────────────────────
+  try {
+    const nextInvoiceNumber = getNextInvoiceNumber();
+    const existing = await Invoice.findOne({ order: order._id, type: 'sale' });
+    if (!existing) {
+      const invoiceNumber = await nextInvoiceNumber('INV');
+      await Invoice.create({
+        invoiceNumber,
+        order:          order._id,
+        user:           order.user,
+        type:           'sale',
+        items:          order.items,
+        subtotal:       order.subtotal,
+        shippingCharge: order.shippingCharge,
+        total:          order.total,
+        issuedAt:       new Date(),
+      });
+      console.log(`[verifyPayment] Invoice ${invoiceNumber} created for order ${order.orderNumber}`);
+    }
+  } catch (invErr) {
+    // Invoice failure must not block the payment confirm response
+    console.error('[verifyPayment] Invoice auto-create failed:', invErr.message);
+  }
+
   res.json({
     success:     true,
     message:     'Payment verified successfully. Order is confirmed.',
@@ -157,6 +184,29 @@ const razorpayWebhook = asyncHandler(async (req, res) => {
         order.status                    = 'confirmed';
         await order.save();
         console.log(`[webhook] payment.captured → Order ${order.orderNumber} confirmed`);
+
+        // Auto-create sale invoice (webhook backup path)
+        try {
+          const nextInvoiceNumber = getNextInvoiceNumber();
+          const existing = await Invoice.findOne({ order: order._id, type: 'sale' });
+          if (!existing) {
+            const invoiceNumber = await nextInvoiceNumber('INV');
+            await Invoice.create({
+              invoiceNumber,
+              order:          order._id,
+              user:           order.user,
+              type:           'sale',
+              items:          order.items,
+              subtotal:       order.subtotal,
+              shippingCharge: order.shippingCharge,
+              total:          order.total,
+              issuedAt:       new Date(),
+            });
+            console.log(`[webhook] Invoice ${invoiceNumber} created for order ${order.orderNumber}`);
+          }
+        } catch (invErr) {
+          console.error('[webhook] Invoice auto-create failed:', invErr.message);
+        }
       }
       break;
     }

@@ -29,6 +29,7 @@ const definition = {
     { name: 'Users',     description: 'Own profile and saved addresses' },
     { name: 'Admin',     description: 'Admin-only dashboard and management' },
     { name: 'Health',    description: 'Service health checks' },
+    { name: 'Cart',      description: 'Shopping cart management' },
   ],
   components: {
     securitySchemes: {
@@ -317,6 +318,49 @@ const definition = {
           lowStockProducts: { type: 'array', items: { $ref: '#/components/schemas/Product' } },
         },
       },
+      // ── Cart ─────────────────────────────────────────────────────────────────
+      CartItem: {
+        type: 'object',
+        properties: {
+          product:   { $ref: '#/components/schemas/Product' },
+          quantity:  { type: 'number', example: 5 },
+          unitPrice: { type: 'number', example: 95, description: 'Resolved retail or wholesale price' },
+          lineTotal: { type: 'number', example: 475 },
+        },
+      },
+      Cart: {
+        type: 'object',
+        properties: {
+          id:        { type: 'string', example: '66a1f2c3e4b0a1234567890g' },
+          buyMode:   { type: 'string', enum: ['normal', 'wholesale'], example: 'normal' },
+          items:     { type: 'array', items: { $ref: '#/components/schemas/CartItem' } },
+          subtotal:  { type: 'number', example: 950, description: 'Sum of all line totals' },
+          itemCount: { type: 'number', example: 10, description: 'Total units across all items' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      AddToCartInput: {
+        type: 'object',
+        required: ['productId'],
+        properties: {
+          productId: { type: 'string', example: '66a1f2c3e4b0a1234567890b' },
+          quantity:  { type: 'number', example: 2, description: 'Units to add (default 1)' },
+        },
+      },
+      UpdateCartItemInput: {
+        type: 'object',
+        required: ['quantity'],
+        properties: {
+          quantity: { type: 'number', example: 10, description: 'New absolute quantity' },
+        },
+      },
+      SetBuyModeInput: {
+        type: 'object',
+        required: ['buyMode'],
+        properties: {
+          buyMode: { type: 'string', enum: ['normal', 'wholesale'], example: 'wholesale' },
+        },
+      },
     },
     responses: {
       Unauthorized: {
@@ -547,6 +591,56 @@ const definition = {
         security: [{ bearerAuth: [] }],
         responses: {
           200: { description: 'Orders', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Order' } } } } },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/api/orders/checkout-from-cart': {
+      post: {
+        tags: ['Orders'],
+        summary: 'Checkout from cart',
+        description:
+          'Reads the current user\'s cart, validates stock for every item, creates an order, ' +
+          'decrements stock, and **clears the cart** on success. ' +
+          'The cart\'s `buyMode` (normal / wholesale) is inherited by the order automatically.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  addressId: {
+                    type: 'string',
+                    description: 'Id of a saved address. Falls back to the default address if omitted.',
+                    example: '66a1f2c3e4b0a1234567890a',
+                  },
+                  address: {
+                    allOf: [{ $ref: '#/components/schemas/AddressInput' }],
+                    description: 'Inline delivery address. Overrides addressId if both are provided.',
+                  },
+                  courierId: {
+                    type: 'string',
+                    description: 'Optional courier partner _id to use for shipping calculation.',
+                    example: '66a1f2c3e4b0a1234567890f',
+                  },
+                  paymentMethod: {
+                    type: 'string',
+                    enum: ['razorpay', 'cod', 'upi'],
+                    default: 'razorpay',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Order created and cart cleared',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Order' } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
           401: { $ref: '#/components/responses/Unauthorized' },
         },
       },
@@ -1137,6 +1231,138 @@ const definition = {
           },
           401: { $ref: '#/components/responses/Unauthorized' },
           403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    // ── Cart ─────────────────────────────────────────────────────────────────
+    '/api/cart': {
+      get: {
+        tags: ['Cart'],
+        summary: 'Get the current user\'s cart',
+        description: 'Returns the full cart with resolved prices. Creates an empty cart document if one does not yet exist.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Cart retrieved successfully',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Cart' } } },
+          },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+      delete: {
+        tags: ['Cart'],
+        summary: 'Clear entire cart',
+        description: 'Removes all items from the cart. The cart document itself is kept.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Cart cleared',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message:   { type: 'string', example: 'Cart cleared' },
+                    itemCount: { type: 'number', example: 0 },
+                  },
+                },
+              },
+            },
+          },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/api/cart/add': {
+      post: {
+        tags: ['Cart'],
+        summary: 'Add item to cart',
+        description:
+          'Adds the specified quantity to the cart. If the product is already in the cart the quantities are summed. ' +
+          'Stock availability is validated before adding.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/AddToCartInput' } },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Item added — full updated cart returned',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Cart' } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/api/cart/mode': {
+      put: {
+        tags: ['Cart'],
+        summary: 'Set buy mode (normal / wholesale)',
+        description:
+          'Switches the cart between retail and wholesale pricing. ' +
+          'Wholesale unit price is applied automatically when `quantity >= minWholesaleQty`.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/SetBuyModeInput' } },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Buy mode updated — full updated cart returned',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Cart' } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/api/cart/item/{productId}': {
+      put: {
+        tags: ['Cart'],
+        summary: 'Update item quantity',
+        description: 'Sets the absolute quantity for an item already in the cart. Stock is validated.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'productId', in: 'path', required: true, schema: { type: 'string' }, description: 'Product _id' },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/UpdateCartItemInput' } },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Quantity updated — full updated cart returned',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Cart' } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+      delete: {
+        tags: ['Cart'],
+        summary: 'Remove item from cart',
+        description: 'Deletes a single product line from the cart.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'productId', in: 'path', required: true, schema: { type: 'string' }, description: 'Product _id' },
+        ],
+        responses: {
+          200: {
+            description: 'Item removed — full updated cart returned',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Cart' } } },
+          },
+          401: { $ref: '#/components/responses/Unauthorized' },
           404: { $ref: '#/components/responses/NotFound' },
         },
       },

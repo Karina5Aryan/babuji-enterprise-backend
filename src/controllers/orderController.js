@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const CourierPartner = require('../models/CourierPartner');
 const Invoice = require('../models/Invoice');
+const Cart = require('../models/Cart');
 const { resolveUnitPrice, calculateShipping, calculateTotalWeight } = require('../utils/pricing');
 
 // Lazy-load razorpay to avoid crash if env vars not set at boot
@@ -279,4 +280,148 @@ const cancelOrder = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createOrder, getMyOrders, getOrderById, cancelOrder, findOrder };
+// ───────────────────────────────────────────────────────────────────────────────
+// @desc   Checkout directly from the user's active cart
+//         Reads the cart, validates stock, creates the order, then clears cart.
+// @route  POST /api/orders/checkout-from-cart
+// @access Private (customer)
+// ───────────────────────────────────────────────────────────────────────────────
+const checkoutFromCart = asyncHandler(async (req, res) => {
+  const {
+    addressId,
+    address,
+    courierId,
+    paymentMethod = 'razorpay',
+  } = req.body;
+
+  // ── Load and validate cart ─────────────────────────────────────────────────────────
+  const cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
+
+  if (!cart || cart.items.length === 0) {
+    res.status(400);
+    throw new Error('Your cart is empty. Add items before checking out.');
+  }
+
+  const buyMode = cart.buyMode;
+
+  // ── Resolve delivery address ────────────────────────────────────────────────────
+  let deliveryAddress = address;
+  if (!deliveryAddress && addressId) {
+    const saved = req.user.addresses.id(addressId);
+    if (!saved) { res.status(400); throw new Error('Selected address not found'); }
+    deliveryAddress = saved.toObject();
+  }
+  if (!deliveryAddress) {
+    const def = req.user.addresses.find((a) => a.isDefault) || req.user.addresses[0];
+    if (def) deliveryAddress = def.toObject();
+  }
+  if (!deliveryAddress) {
+    res.status(400);
+    throw new Error('A delivery address is required. Please add one to your profile.');
+  }
+
+  // ── Resolve courier partner (optional) ─────────────────────────────────────────────
+  let courierDoc = null;
+  if (courierId) {
+    courierDoc = await CourierPartner.findById(courierId);
+    if (!courierDoc || !courierDoc.isActive) {
+      res.status(400);
+      throw new Error('Selected courier partner is not available');
+    }
+  }
+
+  // ── Build order items from cart, validate stock ──────────────────────────────────
+  let subtotal = 0;
+  const orderItems   = [];
+  const stockUpdates = [];
+  const invalidItems = [];
+
+  for (const cartItem of cart.items) {
+    const product = cartItem.product;
+
+    // Guard: product may have been deactivated since being added to cart
+    if (!product || !product.isActive) {
+      invalidItems.push(cartItem.product?.name || 'Unknown product (removed)');
+      continue;
+    }
+
+    const quantity = cartItem.quantity;
+
+    if (product.stock < quantity) {
+      res.status(400);
+      throw new Error(
+        `Insufficient stock for "${product.name}". Available: ${product.stock}, In cart: ${quantity}. Please update your cart.`
+      );
+    }
+
+    const unitPrice = resolveUnitPrice(product, quantity, buyMode);
+    subtotal += unitPrice * quantity;
+
+    orderItems.push({
+      productId:       product._id,
+      name:            product.name,
+      price:           product.price,
+      wholesalePrice:  product.wholesalePrice,
+      unitPrice,
+      imageUrl:        product.imageUrl,
+      quantity,
+      unit:            product.unit,
+      minWholesaleQty: product.minWholesaleQty,
+      weightKg:        product.weightKg || 1,
+    });
+    stockUpdates.push({ product, quantity });
+  }
+
+  // Reject if ALL cart items are now unavailable
+  if (orderItems.length === 0) {
+    res.status(400);
+    throw new Error('None of the items in your cart are available. Please update your cart.');
+  }
+
+  // Warn frontend about skipped items (won't block order if some items are valid)
+  // We choose to hard-fail here to avoid silent partial orders:
+  if (invalidItems.length > 0) {
+    res.status(400);
+    throw new Error(
+      `Some cart items are no longer available: ${invalidItems.join(', ')}. Please remove them from your cart.`
+    );
+  }
+
+  // ── Calculate shipping ──────────────────────────────────────────────────────────────────
+  const totalWeightKg  = calculateTotalWeight(orderItems);
+  const shippingCharge = calculateShipping(subtotal, totalWeightKg, courierDoc);
+  const total          = subtotal + shippingCharge;
+
+  // ── Persist order ──────────────────────────────────────────────────────────────────────
+  const order = await Order.create({
+    orderNumber:    await nextOrderNumber(),
+    user:           req.user._id,
+    items:          orderItems,
+    buyMode,
+    address:        deliveryAddress,
+    subtotal,
+    shippingCharge,
+    total,
+    status:         'pending',
+    courierPartner: courierDoc?._id || undefined,
+    payment: {
+      status: 'pending',
+      method: paymentMethod,
+    },
+  });
+
+  // ── Decrement stock ────────────────────────────────────────────────────────────────────
+  await Promise.all(
+    stockUpdates.map(({ product, quantity }) =>
+      Product.updateOne({ _id: product._id }, { $inc: { stock: -quantity } })
+    )
+  );
+
+  // ── Clear the cart now that order is placed ───────────────────────────────────────
+  cart.items = [];
+  await cart.save();
+
+  res.status(201).json(order);
+});
+
+module.exports = { createOrder, getMyOrders, getOrderById, cancelOrder, checkoutFromCart, findOrder };
