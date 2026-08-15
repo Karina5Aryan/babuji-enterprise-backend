@@ -89,8 +89,10 @@ const definition = {
       AuthResponse: {
         type: 'object',
         properties: {
-          user: { $ref: '#/components/schemas/User' },
-          token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+          user:         { $ref: '#/components/schemas/User' },
+          accessToken:  { type: 'string', description: 'Short-lived JWT (15 min). Send as Bearer token.', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+          refreshToken: { type: 'string', description: 'Long-lived token (30 days). Store securely; use to call /api/auth/refresh.', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+          expiresIn:    { type: 'string', example: '15m', description: 'Access token lifetime' },
         },
       },
       Product: {
@@ -481,6 +483,63 @@ const definition = {
         },
       },
     },
+    '/api/auth/refresh': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Refresh access token',
+        description:
+          'Exchange a valid refresh token for a new access token + rotated refresh token. ' +
+          'Call this automatically when the frontend receives a 401 with an expired access token.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['refreshToken'],
+                properties: {
+                  refreshToken: {
+                    type: 'string',
+                    description: 'The refresh token received at login/register.',
+                    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'New tokens issued',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/api/auth/logout': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Logout',
+        description: 'Revokes the stored refresh token. After this call, the refresh token is permanently invalid.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Logged out',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { message: { type: 'string', example: 'Logged out successfully' } },
+                },
+              },
+            },
+          },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
     '/api/products': {
       get: {
         tags: ['Products'],
@@ -709,6 +768,44 @@ const definition = {
         },
       },
     },
+    '/api/users/me/password': {
+      put: {
+        tags: ['Users'],
+        summary: 'Change password',
+        description:
+          'Verifies the current password before updating. ' +
+          'On success, all existing refresh tokens are revoked — the user must log in again on other devices.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['currentPassword', 'newPassword'],
+                properties: {
+                  currentPassword: { type: 'string', format: 'password', example: 'password123' },
+                  newPassword:     { type: 'string', format: 'password', minLength: 6, example: 'newSecret456' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Password changed',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { message: { type: 'string', example: 'Password updated successfully. Please log in again.' } } },
+              },
+            },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+
     '/api/users/me/addresses': {
       get: {
         tags: ['Users'],

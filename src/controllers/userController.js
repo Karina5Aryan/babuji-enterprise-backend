@@ -1,4 +1,6 @@
 const asyncHandler = require('express-async-handler');
+const User = require('../models/User');
+
 
 // @desc   Get own profile
 // @route  GET /api/users/me
@@ -89,6 +91,43 @@ const deleteAddress = asyncHandler(async (req, res) => {
   res.json(req.user.toJSON().addresses);
 });
 
+// @desc   Change own password
+// @route  PUT /api/users/me/password
+// @access Private
+const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    res.status(400);
+    throw new Error('currentPassword and newPassword are required');
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400);
+    throw new Error('New password must be at least 6 characters');
+  }
+
+  if (currentPassword === newPassword) {
+    res.status(400);
+    throw new Error('New password must be different from the current password');
+  }
+
+  // Re-fetch user with password field (select: false by default)
+  const user = await User.findById(req.user._id).select('+password');
+
+  const isMatch = await user.matchPassword(currentPassword);
+  if (!isMatch) {
+    res.status(401);
+    throw new Error('Current password is incorrect');
+  }
+
+  user.password     = newPassword; // bcrypt pre-save hook hashes it
+  user.refreshToken = null;        // revoke all existing sessions on other devices
+  await user.save();
+
+  res.json({ message: 'Password updated successfully. Please log in again.' });
+});
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -96,4 +135,5 @@ module.exports = {
   addAddress,
   updateAddress,
   deleteAddress,
+  changePassword,
 };

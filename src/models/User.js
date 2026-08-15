@@ -28,9 +28,12 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6, select: false },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     addresses: [addressSchema],
+    // Stored server-side to support proper logout / token revocation
+    refreshToken: { type: String, select: false, default: null },
   },
   { timestamps: true }
 );
+
 
 // Hash password before save
 userSchema.pre('save', async function (next) {
