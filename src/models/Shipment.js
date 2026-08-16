@@ -41,6 +41,12 @@ const shipmentSchema = new mongoose.Schema(
     trackingEvents:    [trackingEventSchema],
     deliveredAt:       { type: Date },
     notes:             { type: String, default: '' },
+
+    // ── Delhivery-specific fields ────────────────────────────────────────────
+    // Populated automatically when courier partner has isDelhivery = true
+    delhiveryShipmentId: { type: String, default: '' }, // Delhivery's internal refnum
+    labelUrl:            { type: String, default: '' }, // Shipping label PDF URL
+    isServiceable:       { type: Boolean },             // Was delivery pincode serviceable?
   },
   { timestamps: true }
 );

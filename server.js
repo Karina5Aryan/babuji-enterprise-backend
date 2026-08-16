@@ -9,16 +9,17 @@ const connectDB = require('./src/config/db');
 const swaggerSpec = require('./src/config/swagger');
 const { notFound, errorHandler } = require('./src/middleware/error');
 
-const authRoutes     = require('./src/routes/authRoutes');
-const productRoutes  = require('./src/routes/productRoutes');
-const orderRoutes    = require('./src/routes/orderRoutes');
-const userRoutes     = require('./src/routes/userRoutes');
-const adminRoutes    = require('./src/routes/adminRoutes');
-const paymentRoutes  = require('./src/routes/paymentRoutes');
-const courierRoutes  = require('./src/routes/courierRoutes');
-const shipmentRoutes = require('./src/routes/shipmentRoutes');
-const invoiceRoutes  = require('./src/routes/invoiceRoutes');
-const cartRoutes     = require('./src/routes/cartRoutes');
+const authRoutes      = require('./src/routes/authRoutes');
+const productRoutes   = require('./src/routes/productRoutes');
+const orderRoutes     = require('./src/routes/orderRoutes');
+const userRoutes      = require('./src/routes/userRoutes');
+const adminRoutes     = require('./src/routes/adminRoutes');
+const paymentRoutes   = require('./src/routes/paymentRoutes');
+const courierRoutes   = require('./src/routes/courierRoutes');
+const shipmentRoutes  = require('./src/routes/shipmentRoutes');
+const invoiceRoutes   = require('./src/routes/invoiceRoutes');
+const cartRoutes      = require('./src/routes/cartRoutes');
+const delhiveryRoutes = require('./src/routes/delhiveryRoutes');
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use('/api/couriers',  courierRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/invoices',  invoiceRoutes);
 app.use('/api/cart',      cartRoutes);
+app.use('/api/delhivery', delhiveryRoutes);
 
 // Error handling
 app.use(notFound);

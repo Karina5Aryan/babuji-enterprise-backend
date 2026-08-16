@@ -5,6 +5,7 @@ const CourierPartner = require('../models/CourierPartner');
 const Invoice = require('../models/Invoice');
 const Cart = require('../models/Cart');
 const { resolveUnitPrice, calculateShipping, calculateTotalWeight } = require('../utils/pricing');
+const { getDistanceKm } = require('../utils/pincodeDistance');
 
 // Lazy-load razorpay to avoid crash if env vars not set at boot
 const getRazorpay = () => require('../config/razorpay');
@@ -122,10 +123,14 @@ const createOrder = asyncHandler(async (req, res) => {
     stockUpdates.push({ product, quantity });
   }
 
-  // ── Calculate shipping ─────────────────────────────────────────────────
-  const totalWeightKg  = calculateTotalWeight(orderItems);
-  const shippingCharge = calculateShipping(subtotal, totalWeightKg, courierDoc);
-  const total          = subtotal + shippingCharge;
+  // ── Calculate shipping (weight + distance) ───────────────────────────
+  const warehousePincode = process.env.WAREHOUSE_PINCODE || '';
+  const deliveryPincode  = deliveryAddress.pincode || '';
+  const distanceKm       = getDistanceKm(warehousePincode, deliveryPincode);
+  const totalWeightKg    = calculateTotalWeight(orderItems);
+  const shippingCharge   = calculateShipping(subtotal, totalWeightKg, courierDoc, distanceKm);
+  const total            = subtotal + shippingCharge;
+  console.log(`[createOrder] weight=${totalWeightKg}kg distance=${distanceKm}km shipping=₹${shippingCharge}`);
 
   // ── Persist order ──────────────────────────────────────────────────────
   const order = await Order.create({
@@ -136,6 +141,7 @@ const createOrder = asyncHandler(async (req, res) => {
     address:        deliveryAddress,
     subtotal,
     shippingCharge,
+    distanceKm,
     total,
     status:         'pending',
     courierPartner: courierDoc?._id || undefined,
@@ -387,10 +393,14 @@ const checkoutFromCart = asyncHandler(async (req, res) => {
     );
   }
 
-  // ── Calculate shipping ──────────────────────────────────────────────────────────────────
-  const totalWeightKg  = calculateTotalWeight(orderItems);
-  const shippingCharge = calculateShipping(subtotal, totalWeightKg, courierDoc);
-  const total          = subtotal + shippingCharge;
+  // ── Calculate shipping (weight + distance) ──────────────────────────────────────────────
+  const warehousePincode = process.env.WAREHOUSE_PINCODE || '';
+  const deliveryPincode  = deliveryAddress.pincode || '';
+  const distanceKm       = getDistanceKm(warehousePincode, deliveryPincode);
+  const totalWeightKg    = calculateTotalWeight(orderItems);
+  const shippingCharge   = calculateShipping(subtotal, totalWeightKg, courierDoc, distanceKm);
+  const total            = subtotal + shippingCharge;
+  console.log(`[checkoutFromCart] weight=${totalWeightKg}kg distance=${distanceKm}km shipping=₹${shippingCharge}`);
 
   // ── Persist order ──────────────────────────────────────────────────────────────────────
   const order = await Order.create({
@@ -401,6 +411,7 @@ const checkoutFromCart = asyncHandler(async (req, res) => {
     address:        deliveryAddress,
     subtotal,
     shippingCharge,
+    distanceKm,
     total,
     status:         'pending',
     courierPartner: courierDoc?._id || undefined,

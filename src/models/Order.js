@@ -77,6 +77,7 @@ const orderSchema = new mongoose.Schema(
     address:        { type: addressSnapshotSchema, required: true },
     subtotal:       { type: Number, required: true },
     shippingCharge: { type: Number, required: true, default: 0 },
+    distanceKm:     { type: Number, default: 0 },   // km between warehouse & delivery pincode at order time
     total:          { type: Number, required: true },
     status:         { type: String, enum: ORDER_STATUSES, default: 'pending' },
 
