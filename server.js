@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 
 const connectDB = require('./src/config/db');
@@ -35,6 +36,8 @@ app.use(
 );
 
 app.use(express.json());
+// Serve locally uploaded product images (no-op in production when STORAGE_DRIVER=s3)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }

@@ -1,5 +1,5 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 const {
   getProducts,
   getCategories,
@@ -8,15 +8,17 @@ const {
   updateProduct,
   deleteProduct,
 } = require('../controllers/productController');
-const { protect, admin } = require('../middleware/auth');
+const { protect, admin }  = require('../middleware/auth');
+const { uploadImages }    = require('../middleware/upload');
 
-router.get('/', getProducts);
-router.get('/categories', getCategories);
-router.get('/:id', getProductById);
+// ── Public ────────────────────────────────────────────────────────────────────
+router.get('/',            getProducts);
+router.get('/categories',  getCategories);
+router.get('/:id',         getProductById);
 
-// Admin-only management
-router.post('/', protect, admin, createProduct);
-router.put('/:id', protect, admin, updateProduct);
+// ── Admin  (multipart/form-data with optional images[] field) ─────────────────
+router.post('/',    protect, admin, uploadImages, createProduct);
+router.put('/:id',  protect, admin, uploadImages, updateProduct);
 router.delete('/:id', protect, admin, deleteProduct);
 
 module.exports = router;
